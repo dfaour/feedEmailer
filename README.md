@@ -12,5 +12,5 @@ This script is probably best used as a cron job set to run every day or so.
 
 Usage:
 
-python3 feed.py www.example.com/rss ExampleRSSFeed
+python3 feed.py http://www.example.com/rss ExampleRSSFeed
 
