@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+#Copyright (C) 2017 David Faour - GPL 3.0
 
 import feedparser
 import time
@@ -10,38 +11,26 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import os
 
+##############
 
 # I strongly suggest you create a new, single-purpose Gmail account for the purposes of sending the notification email (eg, your-name-notifications@gmail.com). Password below must be stored in plain text so I strongly suggest you do NOT use your regular email.
 #If you use gmail, you must allow less secure apps to access the account (which shouldn't matter since this is a single-purpose account, right?) https://support.google.com/accounts/answer/6010255?hl=en
-
 gmail_user = '' # Login username for the address the notification email will be sent FROM
 gmail_password = '' # password for this email address
 
-#Who you want to appear in the 'From' field of the email. This can be whatever you want.
-fromField = 'YOURNAME Notification'
+#1 = on, 0 = off: log to feed.log so you can verify if things are working
+log = 1
+logfile = "./feed.log"
+
+#Who you want to appear in the 'From' field of the email
+fromField = ''
 
 #The email address you want notification emails sent to:
-send_to = '' 
+send_to = ''
 
-#No need to change this unless you really want to
 db = "./feeds.db"
 
-
-
-
-#Change to location of script
-abspath = os.path.abspath(__file__)
-dname = os.path.dirname(abspath)
-os.chdir(dname)
-
-#Make sure script was called correctly
-try:
-    feedURL = sys.argv[1]
-    feedName = sys.argv[2]
-except:
-    print("Usage: ./feeds.py www.example.com/rss-feed Feed_Title")
-    exit()
-
+################
 
 def in_db(url):
     with con:
@@ -53,7 +42,20 @@ def in_db(url):
         else:
             return True
 
+###############
 
+#Make sure script was called correctly
+try:
+    feedURL = sys.argv[1]
+    feedName = sys.argv[2]
+except:
+    print("Usage: ./feeds.py http://www.example.com/rss-feed Feed_Title")
+    exit()
+
+#Change to location of script
+abspath = os.path.abspath(__file__)
+dname = os.path.dirname(abspath)
+os.chdir(dname)
 
 #Try to open the DB. If it doesn't exist, create the DB and initialize it
 if os.path.exists(db)==True:
@@ -67,10 +69,18 @@ else:
         cur = con.cursor()
         cur.execute("CREATE TABLE feeds (url string);")
         con.commit()
+    con.close()
     con = lite.connect(db)
     con.text_factory = str
 
+#Open URL and make sure it returns a valid response
 feed = feedparser.parse(feedURL)
+if (len(feed.entries) == 0):
+    if (log == 1):
+        f = open(logfile, "a+")
+        f.write("[" + time.strftime("%Y-%m-%d %H:%M:%S") + "]: Feed " + feedName + " (" + feedURL + ") was empty or corrupt. Likely bad URL or poor network connection.\n")
+        f.close()
+    exit()
 
 newPostURLs = []
 newPostTitles = []
@@ -95,6 +105,10 @@ for post in feed.entries:
 
 # Exit without doing anything if there are no new posts
 if (len(newPostURLs) == 0):
+    if (log == 1):
+        f = open(logfile, "a+")
+        f.write("[" + time.strftime("%Y-%m-%d %H:%M:%S") + "]: No new posts on feed " + feedName + " (" + feedURL + ").\n")
+        f.close()
     exit()
 
 # Bit of grammar
@@ -131,12 +145,21 @@ text = """\
 %s
 """ % (verb, str(len(newPostTitles)), plural, feedName, body)
 
-email_msg = MIMEText(text, 'html')
+try:
+    email_msg = MIMEText(text, 'html')
 
-msg.attach(email_msg)
-server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
-server.ehlo()
-server.login(gmail_user, gmail_password)
-server.sendmail(fromField, send_to, msg.as_string())
-server.close()
+    msg.attach(email_msg)
+    server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
+    server.ehlo()
+    server.login(gmail_user, gmail_password)
+    server.sendmail(fromField, send_to, msg.as_string())
+    server.close()
+    if (log == 1):
+        f.open(logfile, "a+")
+        f.write("[" + time.strftime("%Y-%m-%d %H:%M:%S") + "]: " + str(len(newPostURLs)) + " new posts on feed " + feedName + " (" + feedURL + ") and email sent to " + send_to + ".\n")
+except:
+    if (log == 1):
+        f.open(logfile, "a+")
+        f.write("[" + time.strftime("%Y-%m-%d %H:%M:%S") + "]: " + str(len(newPostURLs)) + " new posts on feed " + feedName + " (" + feedURL + ") but email failed.\n")
+        f.close()
 
